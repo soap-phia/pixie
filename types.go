@@ -7,38 +7,38 @@ type Version struct {
 	Minor uint8
 }
 
+type Role uint8
+
+type CloseReason uint8
+
 func (v Version) String() string {
 	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
 }
 
 var ProtocolVersion = Version{Major: 2, Minor: 0}
 
-type Role uint8
-
 const (
-	RoleClient Role = iota
-	RoleServer
+	rClient Role = iota
+	rServer
 )
 
 type StreamType uint8
 
 const (
-	StreamTypeTCP StreamType = 0x01
-	StreamTypeUDP StreamType = 0x02
+	sTCP StreamType = 0x01
+	sUDP StreamType = 0x02
 )
 
 func (s StreamType) String() string {
 	switch s {
-	case StreamTypeTCP:
+	case sTCP:
 		return "tcp"
-	case StreamTypeUDP:
+	case sUDP:
 		return "udp"
 	default:
 		return fmt.Sprintf("unknown(0x%02x)", uint8(s))
 	}
 }
-
-type CloseReason uint8
 
 const (
 	crUnknown          CloseReason = 0x01
