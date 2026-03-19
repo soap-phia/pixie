@@ -11,20 +11,20 @@ type WriteRequest struct {
 }
 
 type BatchTransport struct {
-	Transport  Transport
-	WriteMutex sync.Mutex
-	WriteChannel  chan WriteRequest
-	CloseOnce  sync.Once
-	CloseChannel  chan struct{}
+	Transport    Transport
+	WriteMutex   sync.Mutex
+	WriteChannel chan WriteRequest
+	CloseOnce    sync.Once
+	CloseChannel chan struct{}
 }
 
 func NewBatchTransport(t Transport, batchSize int) *BatchTransport {
 	if batchSize <= 0 {
-		batchSize = 64
+		batchSize = 128
 	}
 
 	bt := &BatchTransport{
-		Transport: t,
+		Transport:    t,
 		WriteChannel: make(chan WriteRequest, batchSize),
 		CloseChannel: make(chan struct{}),
 	}
@@ -35,12 +35,14 @@ func NewBatchTransport(t Transport, batchSize int) *BatchTransport {
 }
 
 func (bt *BatchTransport) WriteBatchLoop() {
+	batch := make([][]byte, 0, 128)
+
 	for {
 		select {
 		case <-bt.CloseChannel:
 			return
 		case req := <-bt.WriteChannel:
-			batch := [][]byte{req.data}
+			batch = append(batch, req.data)
 
 			pending := len(bt.WriteChannel)
 			for i := 0; i < pending; i++ {
@@ -54,12 +56,11 @@ func (bt *BatchTransport) WriteBatchLoop() {
 
 			bt.WriteMutex.Lock()
 			for _, d := range batch {
-				if err := bt.Transport.WriteMessage(context.Background(), d); err != nil {
-					bt.WriteMutex.Unlock()
-					return
-				}
+				bt.Transport.WriteMessage(context.Background(), d)
 			}
 			bt.WriteMutex.Unlock()
+
+			batch = batch[:0]
 		}
 	}
 }
