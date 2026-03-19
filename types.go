@@ -11,34 +11,17 @@ type Role uint8
 
 type CloseReason uint8
 
-func (v Version) String() string {
-	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
-}
-
-var ProtocolVersion = Version{Major: 2, Minor: 0}
+type StreamType uint8
 
 const (
 	rClient Role = iota
 	rServer
 )
 
-type StreamType uint8
-
 const (
-	sTCP StreamType = 0x01
-	sUDP StreamType = 0x02
+	strTCP StreamType = 0x01
+	strUDP StreamType = 0x02
 )
-
-func (s StreamType) String() string {
-	switch s {
-	case sTCP:
-		return "tcp"
-	case sUDP:
-		return "udp"
-	default:
-		return fmt.Sprintf("unknown(0x%02x)", uint8(s))
-	}
-}
 
 const (
 	crUnknown          CloseReason = 0x01
@@ -58,6 +41,23 @@ const (
 	crCertAuthFailed   CloseReason = 0xc1
 	crAuthReq          CloseReason = 0xc2
 )
+
+var ProtocolVersion = Version{Major: 2, Minor: 0}
+
+func (v Version) String() string {
+	return fmt.Sprintf("%d.%d", v.Major, v.Minor)
+}
+
+func (s StreamType) String() string {
+	switch s {
+	case strTCP:
+		return "tcp"
+	case strUDP:
+		return "udp"
+	default:
+		return fmt.Sprintf("unknown(0x%02x)", uint8(s))
+	}
+}
 
 func (cr CloseReason) String() string {
 	switch cr {

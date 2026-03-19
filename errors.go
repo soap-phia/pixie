@@ -11,9 +11,15 @@ type StreamError struct {
 }
 
 var (
-	eInvalidPacket  = errors.New("pixie: invalid packet type")
-	ePacketTooSmall = errors.New("pixie: packet too small")
-	eClosedSocket   = errors.New("pixie: websocket closed")
+	eInvalidPacket    = errors.New("pixie: invalid packet type")
+	ePacketTooSmall   = errors.New("pixie: packet too small")
+	eVersion          = errors.New("pixie: incompatible protocol version")
+	eMaxStreams       = errors.New("pixie: maximum stream count reached")
+	ePixieClosed      = errors.New("pixie: multiplexor closed")
+	eInvalidExtension = errors.New("pixie: invalid extension")
+	eClosedSocket     = errors.New("pixie: websocket closed")
+	eFailedHandshake  = errors.New("pixie: Handshake failed")
+	eAuthFail         = errors.New("pixie: authentication failed")
 )
 
 func (e *StreamError) Error() string {

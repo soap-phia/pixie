@@ -17,7 +17,7 @@ type Packet interface {
 
 type PacketHeader struct {
 	PacketType PacketType
-	StreamId uint32
+	StreamId   uint32
 }
 
 type ConnectPacket struct {
@@ -98,7 +98,7 @@ func NewConnectPacket(streamId uint32, streamType StreamType, host string, port 
 	return &ConnectPacket{
 		PacketHeader: PacketHeader{
 			PacketType: pConnect,
-			StreamId: streamId,
+			StreamId:   streamId,
 		},
 		StreamType: streamType,
 		Host:       host,
@@ -120,7 +120,7 @@ func NewDataPacket(streamId uint32, payload []byte) *DataPacket {
 	return &DataPacket{
 		PacketHeader: PacketHeader{
 			PacketType: pData,
-			StreamId: streamId,
+			StreamId:   streamId,
 		},
 		Payload: payload,
 	}
@@ -138,7 +138,7 @@ func NewContinuePacket(streamId uint32, bufferRemaining uint32) *ContinuePacket 
 	return &ContinuePacket{
 		PacketHeader: PacketHeader{
 			PacketType: pContinue,
-			StreamId: streamId,
+			StreamId:   streamId,
 		},
 		BufferRemaining: bufferRemaining,
 	}
@@ -156,7 +156,7 @@ func NewClosePacket(streamId uint32, reason CloseReason) *ClosePacket {
 	return &ClosePacket{
 		PacketHeader: PacketHeader{
 			PacketType: pClose,
-			StreamId: streamId,
+			StreamId:   streamId,
 		},
 		Reason: reason,
 	}
@@ -174,7 +174,7 @@ func NewInfo(version Version, extensions []ExtensionData) *InfoPacket {
 	return &InfoPacket{
 		PacketHeader: PacketHeader{
 			PacketType: pInfo,
-			StreamId: 0,
+			StreamId:   0,
 		},
 		Version:    version,
 		Extensions: extensions,
@@ -204,26 +204,26 @@ func (p *InfoPacket) Encode() []byte {
 	return buffer
 }
 
-func DecodePacket(data []byte) (Packet, error) {
+func Decode(data []byte) (Packet, error) {
 	if len(data) < 5 {
 		return nil, ePacketTooSmall
 	}
 
 	packetType := PacketType(data[0])
-	StreamId := binary.LittleEndian.Uint32(data[1:5])
+	streamId := binary.LittleEndian.Uint32(data[1:5])
 	payload := data[5:]
 
 	switch packetType {
 	case pConnect:
-		return DecodeConnectPacket(StreamId, payload)
+		return DecodeConnectPacket(streamId, payload)
 	case pData:
-		return DecodeDataPacket(StreamId, payload)
+		return DecodeDataPacket(streamId, payload)
 	case pContinue:
-		return DecodeContinuePacket(StreamId, payload)
+		return DecodeContinuePacket(streamId, payload)
 	case pClose:
-		return DecodeClosePacket(StreamId, payload)
+		return DecodeClosePacket(streamId, payload)
 	case pInfo:
-		return DecodeInfoPacket(StreamId, payload)
+		return DecodeInfoPacket(streamId, payload)
 	default:
 		return nil, fmt.Errorf("%w: 0x%02x", eInvalidPacket, packetType)
 	}
@@ -237,7 +237,7 @@ func DecodeConnectPacket(streamId uint32, payload []byte) (*ConnectPacket, error
 	return &ConnectPacket{
 		PacketHeader: PacketHeader{
 			PacketType: pConnect,
-			StreamId: streamId,
+			StreamId:   streamId,
 		},
 		StreamType: StreamType(payload[0]),
 		Port:       binary.LittleEndian.Uint16(payload[1:3]),
@@ -252,7 +252,7 @@ func DecodeDataPacket(streamId uint32, payload []byte) (*DataPacket, error) {
 	return &DataPacket{
 		PacketHeader: PacketHeader{
 			PacketType: pData,
-			StreamId: streamId,
+			StreamId:   streamId,
 		},
 		Payload: data,
 	}, nil
@@ -266,7 +266,7 @@ func DecodeContinuePacket(streamId uint32, payload []byte) (*ContinuePacket, err
 	return &ContinuePacket{
 		PacketHeader: PacketHeader{
 			PacketType: pContinue,
-			StreamId: streamId,
+			StreamId:   streamId,
 		},
 		BufferRemaining: binary.LittleEndian.Uint32(payload[0:4]),
 	}, nil
@@ -280,7 +280,7 @@ func DecodeClosePacket(streamId uint32, payload []byte) (*ClosePacket, error) {
 	return &ClosePacket{
 		PacketHeader: PacketHeader{
 			PacketType: pClose,
-			StreamId: streamId,
+			StreamId:   streamId,
 		},
 		Reason: CloseReason(payload[0]),
 	}, nil
@@ -320,7 +320,7 @@ func DecodeInfoPacket(streamId uint32, payload []byte) (*InfoPacket, error) {
 	return &InfoPacket{
 		PacketHeader: PacketHeader{
 			PacketType: pInfo,
-			StreamId: streamId,
+			StreamId:   streamId,
 		},
 		Version:    version,
 		Extensions: extensions,
@@ -339,7 +339,7 @@ func (r *PacketReader) Read() (Packet, error) {
 		}
 		return nil, err
 	}
-	return DecodePacket(data)
+	return Decode(data)
 }
 
 func NewPacketWriter(t Transport) *PacketWriter {

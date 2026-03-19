@@ -8,11 +8,11 @@ import (
 type FlowControlMode uint8
 
 type FlowControl struct {
-	Mode    FlowControlMode
-	Buffer  uint32
+	Mode         FlowControlMode
+	Buffer       uint32
 	TargetBuffer uint32
-	Wakeup  chan struct{}
-	Mutex   sync.Mutex
+	Wakeup       chan struct{}
+	Mutex        sync.Mutex
 }
 
 const (
@@ -21,12 +21,12 @@ const (
 	fcSendMessages
 )
 
-func NewFlowControl(mode FlowControlMode, BufferSize uint32) *FlowControl {
+func NewFlowControl(mode FlowControlMode, bufferSize uint32) *FlowControl {
 	return &FlowControl{
-		Mode:    mode,
-		Buffer:  BufferSize,
-		TargetBuffer: (BufferSize * 9) / 10,
-		Wakeup:  make(chan struct{}, 1),
+		Mode:         mode,
+		Buffer:       bufferSize,
+		TargetBuffer: (bufferSize * 9) / 10,
+		Wakeup:       make(chan struct{}, 1),
 	}
 }
 
