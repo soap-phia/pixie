@@ -14,32 +14,32 @@ type CloseReason uint8
 type StreamType uint8
 
 const (
-	rClient Role = iota
-	rServer
+	RoleClient Role = iota
+	RoleServer
 )
 
 const (
-	strTCP StreamType = 0x01
-	strUDP StreamType = 0x02
+	StrTCP StreamType = 0x01
+	StrUDP StreamType = 0x02
 )
 
 const (
-	crUnknown          CloseReason = 0x01
-	crVoluntary        CloseReason = 0x02
-	crUnexpected       CloseReason = 0x03
-	crInvalidExtension CloseReason = 0x04
-	crInvalidInfo      CloseReason = 0x41
-	crUnreachable      CloseReason = 0x42
-	crConnTimeout      CloseReason = 0x43
-	crRefused          CloseReason = 0x44
-	crStreamTimeout    CloseReason = 0x47
-	crBlockedAddr      CloseReason = 0x48
-	crThrottled        CloseReason = 0x49
-	crNetErr           CloseReason = 0x4a
-	crClientUnexpected CloseReason = 0x81
-	crPassAuthFailed   CloseReason = 0xc0
-	crCertAuthFailed   CloseReason = 0xc1
-	crAuthReq          CloseReason = 0xc2
+	CrUnknown          CloseReason = 0x01
+	CrVoluntary        CloseReason = 0x02
+	CrUnexpected       CloseReason = 0x03
+	CrInvalidExtension CloseReason = 0x04
+	CrInvalidInfo      CloseReason = 0x41
+	CrUnreachable      CloseReason = 0x42
+	CrConnTimeout      CloseReason = 0x43
+	CrRefused          CloseReason = 0x44
+	CrStreamTimeout    CloseReason = 0x47
+	CrBlockedAddr      CloseReason = 0x48
+	CrThrottled        CloseReason = 0x49
+	CrNetErr           CloseReason = 0x4a
+	CrClientUnexpected CloseReason = 0x81
+	CrPassAuthFailed   CloseReason = 0xc0
+	CrCertAuthFailed   CloseReason = 0xc1
+	CrAuthReq          CloseReason = 0xc2
 )
 
 var ProtocolVersion = Version{Major: 2, Minor: 0}
@@ -50,9 +50,9 @@ func (v Version) String() string {
 
 func (s StreamType) String() string {
 	switch s {
-	case strTCP:
+	case StrTCP:
 		return "tcp"
-	case strUDP:
+	case StrUDP:
 		return "udp"
 	default:
 		return fmt.Sprintf("unknown(0x%02x)", uint8(s))
@@ -61,37 +61,37 @@ func (s StreamType) String() string {
 
 func (cr CloseReason) String() string {
 	switch cr {
-	case crUnknown:
+	case CrUnknown:
 		return "Unknown"
-	case crVoluntary:
+	case CrVoluntary:
 		return "Voluntary"
-	case crUnexpected:
+	case CrUnexpected:
 		return "Unexpected"
-	case crInvalidExtension:
+	case CrInvalidExtension:
 		return "Incompatible extensions"
-	case crInvalidInfo:
+	case CrInvalidInfo:
 		return "Invalid information"
-	case crUnreachable:
+	case CrUnreachable:
 		return "Unreachable"
-	case crConnTimeout:
+	case CrConnTimeout:
 		return "Connection timed out"
-	case crRefused:
+	case CrRefused:
 		return "Connection refused"
-	case crStreamTimeout:
+	case CrStreamTimeout:
 		return "Stream timed out"
-	case crBlockedAddr:
+	case CrBlockedAddr:
 		return "Blocked address"
-	case crThrottled:
+	case CrThrottled:
 		return "Throttled"
-	case crNetErr:
+	case CrNetErr:
 		return "Network error"
-	case crClientUnexpected:
+	case CrClientUnexpected:
 		return "Client unexpected error"
-	case crPassAuthFailed:
+	case CrPassAuthFailed:
 		return "Password auth failed"
-	case crCertAuthFailed:
+	case CrCertAuthFailed:
 		return "Certificate auth failed"
-	case crAuthReq:
+	case CrAuthReq:
 		return "Authentication required"
 	default:
 		return fmt.Sprintf("Unknown(0x%02x)", uint8(cr))

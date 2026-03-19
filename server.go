@@ -56,7 +56,7 @@ func NewPixieServer(ctx context.Context, transport Transport, opts ...ServerOpti
 	config := DefaultConfig()
 
 	s := &PixieServer{
-		PixieCore:     NewCore(transport, rServer, config),
+		PixieCore:     NewCore(transport, RoleServer, config),
 		StreamChannel: make(chan *IncomingStream, 64),
 	}
 
@@ -95,7 +95,7 @@ func (s *PixieServer) HandshakeV1(ctx context.Context) error {
 	for _, ext := range s.Extensions {
 		extensionData = append(extensionData, ExtensionData{
 			Id:      ext.ID(),
-			Payload: ext.Encode(rServer),
+			Payload: ext.Encode(RoleServer),
 		})
 	}
 
@@ -134,7 +134,7 @@ func (s *PixieServer) HandshakeV1(ctx context.Context) error {
 
 func (s *PixieServer) HandshakeV2(ctx context.Context, clientInfo *InfoPacket) error {
 	if clientInfo.Version.Major != ProtocolVersion.Major {
-		closeReason := crInvalidExtension
+		closeReason := CrInvalidExtension
 		_ = s.SendPacket(ctx, NewClosePacket(0, closeReason))
 		return fmt.Errorf("%w: client version %s, server version %s",
 			eVersion, clientInfo.Version, ProtocolVersion)
@@ -148,7 +148,7 @@ func (s *PixieServer) HandshakeV2(ctx context.Context, clientInfo *InfoPacket) e
 	var negotiatedExtensions []Extension
 	for _, ext := range s.Extensions {
 		if clientExt, ok := clientExtensions[ext.ID()]; ok {
-			if err := ext.Decode(clientExt.Payload, rServer); err != nil {
+			if err := ext.Decode(clientExt.Payload, RoleServer); err != nil {
 				continue
 			}
 			negotiatedExtensions = append(negotiatedExtensions, ext)
@@ -156,11 +156,11 @@ func (s *PixieServer) HandshakeV2(ctx context.Context, clientInfo *InfoPacket) e
 	}
 
 	for _, ext := range negotiatedExtensions {
-		if err := ext.HandleHandshake(ctx, s.Transport.Transport, rServer); err != nil {
+		if err := ext.HandleHandshake(ctx, s.Transport.Transport, RoleServer); err != nil {
 			if ext.ID() == PasswordExtensionID {
-				_ = s.SendPacket(ctx, NewClosePacket(0, crPassAuthFailed))
+				_ = s.SendPacket(ctx, NewClosePacket(0, CrPassAuthFailed))
 			} else {
-				_ = s.SendPacket(ctx, NewClosePacket(0, crInvalidExtension))
+				_ = s.SendPacket(ctx, NewClosePacket(0, CrInvalidExtension))
 			}
 			return fmt.Errorf("%w: extension %d Handshake failed: %v", eFailedHandshake, ext.ID(), err)
 		}
@@ -241,16 +241,16 @@ func (s *PixieServer) HandleConnectPacket(pkt *ConnectPacket) {
 		go func() {
 			ctx := context.Background()
 			if err := s.Config.OnStreamOpen(ctx, stream, pkt); err != nil {
-				stream.CloseWithReason(crInvalidInfo)
+				stream.CloseWithReason(CrInvalidInfo)
 			}
 		}()
 	} else {
 		select {
 		case s.StreamChannel <- &IncomingStream{Stream: stream, Connect: pkt}:
 		case <-s.CloseChannel:
-			stream.CloseWithReason(crUnknown)
+			stream.CloseWithReason(CrUnknown)
 		default:
-			stream.CloseWithReason(crThrottled)
+			stream.CloseWithReason(CrThrottled)
 		}
 	}
 }
@@ -267,7 +267,7 @@ func (s *PixieServer) AcceptStream(ctx context.Context) (*Stream, *ConnectPacket
 }
 
 func (s *PixieServer) Close() error {
-	return s.CloseWithReason(crVoluntary)
+	return s.CloseWithReason(CrVoluntary)
 }
 
 func (s *PixieServer) CloseWithReason(reason CloseReason) error {

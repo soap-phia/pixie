@@ -91,11 +91,11 @@ func (p *Pool) OpenStream(ctx context.Context, streamType StreamType, host strin
 }
 
 func (p *Pool) DialTCP(ctx context.Context, host string, port uint16) (*Stream, error) {
-	return p.OpenStream(ctx, strTCP, host, port)
+	return p.OpenStream(ctx, StrTCP, host, port)
 }
 
 func (p *Pool) DialUDP(ctx context.Context, host string, port uint16) (*Stream, error) {
-	return p.OpenStream(ctx, strUDP, host, port)
+	return p.OpenStream(ctx, StrUDP, host, port)
 }
 
 func (p *Pool) Close() error {
@@ -271,7 +271,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (*Str
 	case "udp", "udp4", "udp6":
 		return d.pool.DialUDP(ctx, host, port)
 	default:
-		return nil, &StreamError{CloseReason: crInvalidInfo}
+		return nil, &StreamError{CloseReason: CrInvalidInfo}
 	}
 }
 
@@ -299,7 +299,7 @@ func SplitHostPort(hostport string) (host, port string, err error) {
 		i--
 	}
 	if i < 0 {
-		return "", "", &StreamError{CloseReason: crInvalidInfo}
+		return "", "", &StreamError{CloseReason: CrInvalidInfo}
 	}
 
 	if hostport[0] == '[' {
@@ -308,7 +308,7 @@ func SplitHostPort(hostport string) (host, port string, err error) {
 			end++
 		}
 		if end >= len(hostport) || end+1 >= len(hostport) || hostport[end+1] != ':' {
-			return "", "", &StreamError{CloseReason: crInvalidInfo}
+			return "", "", &StreamError{CloseReason: CrInvalidInfo}
 		}
 		return hostport[1:end], hostport[end+2:], nil
 	}

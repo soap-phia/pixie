@@ -104,7 +104,7 @@ func (m *PixieCore) Close() error {
 
 		m.StreamsMutex.Lock()
 		for _, s := range m.Streams {
-			s.CloseFromRemote(crUnknown, true)
+			s.CloseFromRemote(CrUnknown, true)
 		}
 		m.Streams = make(map[uint32]*Stream)
 		m.StreamsMutex.Unlock()
@@ -152,7 +152,7 @@ func (m *PixieCore) ReadLoop(ctx context.Context) {
 }
 
 func (m *PixieCore) GetFlowControlMode(streamType StreamType) FlowControlMode {
-	if streamType == strUDP {
+	if streamType == StrUDP {
 		return fcDisabled
 	}
 
@@ -162,7 +162,7 @@ func (m *PixieCore) GetFlowControlMode(streamType StreamType) FlowControlMode {
 	for _, ext := range m.Extensions {
 		for _, st := range ext.CongestionStreamTypes() {
 			if st == streamType {
-				if m.Role == rClient {
+				if m.Role == RoleClient {
 					return fcTrackAmt
 				}
 				return fcSendMessages
@@ -170,7 +170,7 @@ func (m *PixieCore) GetFlowControlMode(streamType StreamType) FlowControlMode {
 		}
 	}
 
-	if m.Role == rClient {
+	if m.Role == RoleClient {
 		return fcTrackAmt
 	}
 	return fcSendMessages

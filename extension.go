@@ -123,7 +123,7 @@ func (b *UDPExtensionBuilder) BuildDefault(role Role) Extension {
 func (e *PasswordExtension) ID() uint8 { return PasswordExtensionID }
 
 func (e *PasswordExtension) Encode(role Role) []byte {
-	if role == rServer {
+	if role == RoleServer {
 		if e.Required {
 			return []byte{1}
 		}
@@ -137,7 +137,7 @@ func (e *PasswordExtension) Encode(role Role) []byte {
 }
 
 func (e *PasswordExtension) Decode(data []byte, role Role) error {
-	if role == rClient {
+	if role == RoleClient {
 		if len(data) >= 1 {
 			e.Required = data[0] != 0
 		}
@@ -156,7 +156,7 @@ func (e *PasswordExtension) Decode(data []byte, role Role) error {
 }
 
 func (e *PasswordExtension) HandleHandshake(ctx context.Context, transport Transport, role Role) error {
-	if role == rServer && e.Validator != nil {
+	if role == RoleServer && e.Validator != nil {
 		if !e.Validator(e.Username, e.Password) {
 			return eAuthFail
 		}

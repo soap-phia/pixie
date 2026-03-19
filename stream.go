@@ -42,7 +42,7 @@ func NewStream(id uint32, streamType StreamType, pixie *PixieCore, flowControl *
 		DataChannel:  make(chan []byte, bufferSize),
 		CloseChannel: make(chan struct{}),
 	}
-	s.CloseReason.Store(crUnknown)
+	s.CloseReason.Store(CrUnknown)
 	return s
 }
 
@@ -140,7 +140,7 @@ func (s *Stream) Write(p []byte) (n int, err error) {
 }
 
 func (s *Stream) Close() error {
-	return s.CloseWithReason(crVoluntary)
+	return s.CloseWithReason(CrVoluntary)
 }
 
 func (s *Stream) CloseWithReason(reason CloseReason) error {
@@ -222,7 +222,7 @@ func (s *Stream) CloseFromRemote(reason CloseReason, pixieClosing bool) {
 
 func (s *Stream) GetCloseError() error {
 	reason := s.CloseReason.Load().(CloseReason)
-	if reason == crVoluntary {
+	if reason == CrVoluntary {
 		return io.EOF
 	}
 	return &StreamError{StreamId: s.Id, CloseReason: reason}

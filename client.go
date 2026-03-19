@@ -38,7 +38,7 @@ func NewPixie(ctx context.Context, transport Transport, opts ...ClientOption) (*
 	config := DefaultConfig()
 
 	c := &PixieClient{
-		PixieCore: NewCore(transport, rClient, config),
+		PixieCore: NewCore(transport, RoleClient, config),
 	}
 
 	for _, opt := range opts {
@@ -99,13 +99,13 @@ func (c *PixieClient) HandshakeV2(ctx context.Context, serverInfo *InfoPacket) e
 
 	for _, ext := range c.Extensions {
 		if serverExt, ok := serverExtensions[ext.ID()]; ok {
-			if err := ext.Decode(serverExt.Payload, rClient); err != nil {
+			if err := ext.Decode(serverExt.Payload, RoleClient); err != nil {
 				continue
 			}
 			negotiatedExtensions = append(negotiatedExtensions, ext)
 			extensionData = append(extensionData, ExtensionData{
 				Id:      ext.ID(),
-				Payload: ext.Encode(rClient),
+				Payload: ext.Encode(RoleClient),
 			})
 		}
 	}
@@ -116,7 +116,7 @@ func (c *PixieClient) HandshakeV2(ctx context.Context, serverInfo *InfoPacket) e
 	}
 
 	for _, ext := range negotiatedExtensions {
-		if err := ext.HandleHandshake(ctx, c.Transport.Transport, rClient); err != nil {
+		if err := ext.HandleHandshake(ctx, c.Transport.Transport, RoleClient); err != nil {
 			return fmt.Errorf("%w: extension %d Handshake failed: %v", eFailedHandshake, ext.ID(), err)
 		}
 	}
@@ -198,7 +198,7 @@ func (c *PixieClient) OpenStream(ctx context.Context, streamType StreamType, hos
 		return nil, ePixieClosed
 	}
 
-	if streamType == strUDP && !c.HasExtension(UDPExtensionID) {
+	if streamType == StrUDP && !c.HasExtension(UDPExtensionID) {
 		return nil, fmt.Errorf("%w: UDP extension required", eInvalidExtension)
 	}
 
@@ -225,15 +225,15 @@ func (c *PixieClient) OpenStream(ctx context.Context, streamType StreamType, hos
 }
 
 func (c *PixieClient) DialTCP(ctx context.Context, host string, port uint16) (*Stream, error) {
-	return c.OpenStream(ctx, strTCP, host, port)
+	return c.OpenStream(ctx, StrTCP, host, port)
 }
 
 func (c *PixieClient) DialUDP(ctx context.Context, host string, port uint16) (*Stream, error) {
-	return c.OpenStream(ctx, strUDP, host, port)
+	return c.OpenStream(ctx, StrUDP, host, port)
 }
 
 func (c *PixieClient) Close() error {
-	return c.CloseWithReason(crVoluntary)
+	return c.CloseWithReason(CrVoluntary)
 }
 
 func (c *PixieClient) CloseWithReason(reason CloseReason) error {
