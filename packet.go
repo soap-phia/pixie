@@ -145,11 +145,7 @@ func NewContinuePacket(streamId uint32, bufferRemaining uint32) *ContinuePacket 
 }
 
 func (p *ContinuePacket) Encode() []byte {
-	buffer := make([]byte, 1+4+4)
-	buffer[0] = byte(p.PacketType)
-	binary.LittleEndian.PutUint32(buffer[1:5], p.StreamId)
-	binary.LittleEndian.PutUint32(buffer[5:9], p.BufferRemaining)
-	return buffer
+	return EncodeContinuePacket(p.StreamId, p.BufferRemaining)
 }
 
 func NewClosePacket(streamId uint32, reason CloseReason) *ClosePacket {
@@ -163,11 +159,7 @@ func NewClosePacket(streamId uint32, reason CloseReason) *ClosePacket {
 }
 
 func (p *ClosePacket) Encode() []byte {
-	buffer := make([]byte, 1+4+1)
-	buffer[0] = byte(p.PacketType)
-	binary.LittleEndian.PutUint32(buffer[1:5], p.StreamId)
-	buffer[5] = byte(p.Reason)
-	return buffer
+	return EncodeClosePacket(p.StreamId, p.Reason)
 }
 
 func NewInfo(version Version, extensions []ExtensionData) *InfoPacket {

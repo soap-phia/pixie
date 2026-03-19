@@ -35,14 +35,13 @@ func NewBatchTransport(t Transport, batchSize int) *BatchTransport {
 }
 
 func (bt *BatchTransport) WriteBatchLoop() {
-	batch := make([][]byte, 0, 128)
-
 	for {
 		select {
 		case <-bt.CloseChannel:
 			return
 		case req := <-bt.WriteChannel:
-			batch = append(batch, req.data)
+			batch := make([][]byte, 1, 128)
+			batch[0] = req.data
 
 			pending := len(bt.WriteChannel)
 			for i := 0; i < pending; i++ {
@@ -56,11 +55,12 @@ func (bt *BatchTransport) WriteBatchLoop() {
 
 			bt.WriteMutex.Lock()
 			for _, d := range batch {
-				bt.Transport.WriteMessage(context.Background(), d)
+				if err := bt.Transport.WriteMessage(context.Background(), d); err != nil {
+					bt.WriteMutex.Unlock()
+					return
+				}
 			}
 			bt.WriteMutex.Unlock()
-
-			batch = batch[:0]
 		}
 	}
 }

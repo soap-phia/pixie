@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 )
 
 type PixieCore struct {
@@ -14,6 +15,9 @@ type PixieCore struct {
 	Streams      map[uint32]*Stream
 	StreamsMutex sync.RWMutex
 	NextId       atomic.Uint32
+
+	cachedStreamId uint32
+	cachedStream   unsafe.Pointer
 
 	Extensions     []Extension
 	ExtensionMutex sync.RWMutex
@@ -67,9 +71,22 @@ func (m *PixieCore) SendPacket(ctx context.Context, pkt Packet) error {
 }
 
 func (m *PixieCore) GetStream(id uint32) *Stream {
+	if m.cachedStreamId == id {
+		if stream := (*Stream)(atomic.LoadPointer(&m.cachedStream)); stream != nil {
+			return stream
+		}
+	}
+
 	m.StreamsMutex.RLock()
-	defer m.StreamsMutex.RUnlock()
-	return m.Streams[id]
+	stream := m.Streams[id]
+	m.StreamsMutex.RUnlock()
+
+	if stream != nil {
+		atomic.StorePointer(&m.cachedStream, unsafe.Pointer(stream))
+		m.cachedStreamId = id
+	}
+
+	return stream
 }
 
 func (m *PixieCore) AddStream(s *Stream) {
@@ -84,8 +101,13 @@ func (m *PixieCore) AddStream(s *Stream) {
 
 func (m *PixieCore) RemoveStream(id uint32) {
 	m.StreamsMutex.Lock()
-	defer m.StreamsMutex.Unlock()
 	delete(m.Streams, id)
+	m.StreamsMutex.Unlock()
+
+	if m.cachedStreamId == id {
+		atomic.StorePointer(&m.cachedStream, nil)
+		m.cachedStreamId = 0
+	}
 
 	if m.Metrics != nil {
 		m.Metrics.StreamsClosed.Add(1)
