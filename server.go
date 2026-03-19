@@ -40,6 +40,12 @@ func WithServerMetrics() ServerOption {
 	}
 }
 
+func WithServerForceV1() ServerOption {
+	return func(s *PixieServer) {
+		s.Config.ForceV1 = true
+	}
+}
+
 func WithStreamHandler(handler func(ctx context.Context, stream *Stream, connect *ConnectPacket) error) ServerOption {
 	return func(s *PixieServer) {
 		s.Config.OnStreamOpen = handler
@@ -75,6 +81,16 @@ func NewPixieServer(ctx context.Context, transport Transport, opts ...ServerOpti
 }
 
 func (s *PixieServer) HandshakeV1(ctx context.Context) error {
+	if s.Config.ForceV1 {
+		s.Downgraded = true
+		s.Extensions = []Extension{&UDPExtension{}}
+
+		if err := s.SendPacket(ctx, NewContinuePacket(0, s.BufferSize)); err != nil {
+			return fmt.Errorf("%w: %v", eFailedHandshake, err)
+		}
+		return nil
+	}
+
 	var extensionData []ExtensionData
 	for _, ext := range s.Extensions {
 		extensionData = append(extensionData, ExtensionData{

@@ -13,6 +13,7 @@ type Config struct {
 	Extensions    []Extension
 	OnStreamOpen  func(ctx context.Context, stream *Stream, connect *ConnectPacket) error
 	EnableMetrics bool
+	ForceV1       bool
 }
 
 type LockedTransport struct {
