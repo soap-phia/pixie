@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
 type PixieServer struct {
@@ -52,12 +53,18 @@ func WithStreamHandler(handler func(ctx context.Context, stream *Stream, connect
 	}
 }
 
+func WithServerFramedWrites() ServerOption {
+	return func(s *PixieServer) {
+		s.UseFramedWrites = true
+	}
+}
+
 func NewPixieServer(ctx context.Context, transport Transport, opts ...ServerOption) (*PixieServer, error) {
 	config := DefaultConfig()
 
 	s := &PixieServer{
 		PixieCore:     NewCore(transport, RoleServer, config),
-		StreamChannel: make(chan *IncomingStream, 64),
+		StreamChannel: make(chan *IncomingStream, 512),
 	}
 
 	for _, opt := range opts {
@@ -178,6 +185,9 @@ func (s *PixieServer) HandshakeV2(ctx context.Context, clientInfo *InfoPacket) e
 func (s *PixieServer) run(ctx context.Context) {
 	go s.ReadLoop(ctx)
 
+	continueTicker := time.NewTicker(1500 * time.Microsecond)
+	defer continueTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -192,6 +202,8 @@ func (s *PixieServer) run(ctx context.Context) {
 			return
 		case pkt := <-s.PacketChannel:
 			s.PacketHandler(ctx, pkt)
+		case <-continueTicker.C:
+			s.FlushContinueBatch()
 		}
 	}
 }
@@ -232,7 +244,7 @@ func (s *PixieServer) HandleConnectPacket(pkt *ConnectPacket) {
 		fc = NewFlowControl(fcMode, s.BufferSize)
 	}
 
-	stream := NewStream(streamID, pkt.StreamType, s.PixieCore, fc, int(s.BufferSize))
+	stream := NewStream(streamID, pkt.StreamType, s.PixieCore, fc, s.Config.StreamChannelSize)
 	stream.Host = pkt.Host
 	stream.Port = pkt.Port
 	s.AddStream(stream)

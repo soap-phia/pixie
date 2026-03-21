@@ -2,6 +2,7 @@ package pixie
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -132,6 +133,19 @@ func (p *Pool) Stats() PoolStats {
 }
 
 func (p *Pool) GetConn(ctx context.Context) (*poolConn, error) {
+	p.Mutex.RLock()
+	if len(p.Connections) > 0 {
+		for _, conn := range p.Connections {
+			if !conn.Dead && conn.Active < int64(p.Config.MaxStreamsPerConn) {
+				conn.Active++
+				conn.LastUsed = time.Now()
+				p.Mutex.RUnlock()
+				return conn, nil
+			}
+		}
+	}
+	p.Mutex.RUnlock()
+
 	p.Mutex.Lock()
 
 	var best *poolConn
@@ -285,9 +299,9 @@ func ParseAddress(address string) (string, uint16, error) {
 		return "", 0, err
 	}
 
-	var port int
-	for _, c := range portStr {
-		port = port*10 + int(c-'0')
+	port, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil {
+		return "", 0, &StreamError{CloseReason: CrInvalidInfo}
 	}
 
 	return host, uint16(port), nil

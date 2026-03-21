@@ -5,32 +5,35 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/soap-phia/pixie/transport"
 )
 
 type Stream struct {
-	Id         uint32
-	StreamType StreamType
-	Host       string
-	Port       uint16
-
+	DataChannel chan []byte
 	Pixie       *PixieCore
 	FlowControl *FlowControl
-
-	DataChannel chan []byte
 	DataBuffer  []byte
+	Id          uint32
+	ReadCount   atomic.Uint32
+	Closed      atomic.Bool
+	_           [7]byte
 
-	Closed       atomic.Bool
-	CloseReason  atomic.Value
+	pooledBuf    []byte
 	CloseChannel chan struct{}
-	CloseOnce    sync.Once
 
-	ReadCount atomic.Uint32
-
+	CloseOnce     sync.Once
+	CloseReason   atomic.Value
 	ReadDeadline  atomic.Value
 	WriteDeadline atomic.Value
+
+	Host       string
+	Port       uint16
+	StreamType StreamType
 }
 
 func NewStream(id uint32, streamType StreamType, pixie *PixieCore, flowControl *FlowControl, bufferSize int) *Stream {
@@ -63,6 +66,17 @@ func (s *Stream) GetPort() uint16 {
 }
 
 func (s *Stream) Read(p []byte) (n int, err error) {
+	if len(s.DataBuffer) > 0 {
+		n = copy(p, s.DataBuffer)
+		s.DataBuffer = s.DataBuffer[n:]
+		if len(s.DataBuffer) == 0 && s.pooledBuf != nil {
+			transport.ReturnReadMsgBuffer(s.pooledBuf)
+			s.pooledBuf = nil
+		}
+		s.IncrementReadCount()
+		return n, nil
+	}
+
 	if s.Closed.Load() {
 		return 0, s.GetCloseError()
 	}
@@ -72,19 +86,28 @@ func (s *Stream) Read(p []byte) (n int, err error) {
 		deadline = d.(time.Time)
 	}
 
-	if len(s.DataBuffer) > 0 {
-		n = copy(p, s.DataBuffer)
-		s.DataBuffer = s.DataBuffer[n:]
-		s.IncrementReadCount()
-		return n, nil
+	if deadline.IsZero() {
+		select {
+		case data, ok := <-s.DataChannel:
+			if !ok {
+				return 0, s.GetCloseError()
+			}
+			n = copy(p, data)
+			if n < len(data) {
+				s.DataBuffer = data[n:]
+				s.pooledBuf = data[:cap(data)]
+			} else {
+				transport.ReturnReadMsgBuffer(data)
+			}
+			s.IncrementReadCount()
+			return n, nil
+		case <-s.CloseChannel:
+			return 0, s.GetCloseError()
+		}
 	}
 
-	var timer <-chan time.Time
-	if !deadline.IsZero() {
-		t := time.NewTimer(time.Until(deadline))
-		defer t.Stop()
-		timer = t.C
-	}
+	t := time.NewTimer(time.Until(deadline))
+	defer t.Stop()
 
 	select {
 	case data, ok := <-s.DataChannel:
@@ -94,10 +117,13 @@ func (s *Stream) Read(p []byte) (n int, err error) {
 		n = copy(p, data)
 		if n < len(data) {
 			s.DataBuffer = data[n:]
+			s.pooledBuf = data[:cap(data)]
+		} else {
+			transport.ReturnReadMsgBuffer(data)
 		}
 		s.IncrementReadCount()
 		return n, nil
-	case <-timer:
+	case <-t.C:
 		return 0, &net.OpError{Op: "read", Net: "wisp", Err: context.DeadlineExceeded}
 	case <-s.CloseChannel:
 		return 0, s.GetCloseError()
@@ -109,31 +135,39 @@ func (s *Stream) Write(p []byte) (n int, err error) {
 		return 0, s.GetCloseError()
 	}
 
-	var deadline time.Time
-	if d := s.WriteDeadline.Load(); d != nil {
-		deadline = d.(time.Time)
-	}
-
 	ctx := context.Background()
-	if !deadline.IsZero() {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithDeadline(ctx, deadline)
-		defer cancel()
+	if d := s.WriteDeadline.Load(); d != nil {
+		if deadline, ok := d.(time.Time); ok && !deadline.IsZero() {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithDeadline(ctx, deadline)
+			defer cancel()
+		}
 	}
 
-	if s.FlowControl != nil && s.FlowControl.Mode == fcTrackAmt {
-		if err := s.FlowControl.WaitBuffer(ctx); err != nil {
+	fc := s.FlowControl
+
+	if fc != nil && fc.Mode == fcTrackAmt {
+		if err := fc.WaitBuffer(ctx); err != nil {
 			return 0, &net.OpError{Op: "write", Net: "wisp", Err: err}
 		}
 	}
 
-	pkt := NewDataPacket(s.Id, p)
-	if err := s.Pixie.SendPacket(ctx, pkt); err != nil {
-		return 0, err
+	if s.Pixie.UseFramedWrites {
+		poolBuf, framedData := EncodeDataFramed(s.Id, p)
+		if err := s.Pixie.SendDataFramed(ctx, poolBuf, framedData, len(p)); err != nil {
+			return 0, err
+		}
+	} else {
+		poolBuf, data := EncodePacketPooled(s.Id, p)
+		if err := s.Pixie.SendPacketRaw(ctx, data); err != nil {
+			ReturnPacket(poolBuf)
+			return 0, err
+		}
+		ReturnPacket(poolBuf)
 	}
 
-	if s.FlowControl != nil {
-		s.FlowControl.Subtract()
+	if fc != nil {
+		fc.Subtract()
 	}
 
 	return len(p), nil
@@ -150,8 +184,15 @@ func (s *Stream) CloseWithReason(reason CloseReason) error {
 		s.CloseReason.Store(reason)
 		close(s.CloseChannel)
 
-		pkt := NewClosePacket(s.Id, reason)
-		err = s.Pixie.SendPacket(context.Background(), pkt)
+		if s.pooledBuf != nil {
+			transport.ReturnReadMsgBuffer(s.pooledBuf)
+			s.pooledBuf = nil
+			s.DataBuffer = nil
+		}
+
+		pktData := EncodeClosePacket(s.Id, reason)
+		err = s.Pixie.SendPacketRaw(context.Background(), pktData)
+		ReturnClosePacket(pktData)
 
 		s.Pixie.RemoveStream(s.Id)
 	})
@@ -181,7 +222,7 @@ func (s *Stream) LocalAddr() net.Addr {
 func (s *Stream) RemoteAddr() net.Addr {
 	return &wispAddr{
 		network: s.StreamType.String(),
-		address: net.JoinHostPort(s.Host, string(rune(s.Port))),
+		address: net.JoinHostPort(s.Host, strconv.FormatUint(uint64(s.Port), 10)),
 	}
 }
 
@@ -198,13 +239,10 @@ func (s *Stream) Done() <-chan struct{} {
 }
 
 func (s *Stream) ReceiveData(data []byte) {
-	if s.Closed.Load() {
-		return
-	}
-
 	select {
 	case s.DataChannel <- data:
-	default:
+	case <-s.CloseChannel:
+		transport.ReturnReadMsgBuffer(data)
 	}
 }
 
@@ -213,7 +251,24 @@ func (s *Stream) CloseFromRemote(reason CloseReason, pixieClosing bool) {
 		s.Closed.Store(true)
 		s.CloseReason.Store(reason)
 		close(s.CloseChannel)
+
+		for {
+			select {
+			case data := <-s.DataChannel:
+				transport.ReturnReadMsgBuffer(data)
+			default:
+				goto done
+			}
+		}
+	done:
 		close(s.DataChannel)
+
+		if s.pooledBuf != nil {
+			transport.ReturnReadMsgBuffer(s.pooledBuf)
+			s.pooledBuf = nil
+			s.DataBuffer = nil
+		}
+
 		if !pixieClosing {
 			s.Pixie.RemoveStream(s.Id)
 		}
@@ -235,8 +290,7 @@ func (s *Stream) IncrementReadCount() {
 		newBuffer := s.FlowControl.Add(count)
 		s.ReadCount.Store(0)
 
-		pkt := NewContinuePacket(s.Id, newBuffer)
-		_ = s.Pixie.SendPacket(context.Background(), pkt)
+		s.Pixie.SendPendingContinue(s.Id, newBuffer)
 	}
 }
 
@@ -269,7 +323,10 @@ func (r *StreamReader) Read(p []byte) (n int, err error) {
 
 func (r *StreamReader) ReadAll() ([]byte, error) {
 	var buf []byte
-	tmp := make([]byte, 32*1024)
+	tmpPointer := GetReadBuffer()
+	tmp := *tmpPointer
+	defer ReturnReadBuffer(tmpPointer)
+
 	for {
 		n, err := r.stream.Read(tmp)
 		if n > 0 {

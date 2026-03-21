@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
 type PixieClient struct {
@@ -149,6 +150,9 @@ func (c *PixieClient) HandshakeV2(ctx context.Context, serverInfo *InfoPacket) e
 func (c *PixieClient) run(ctx context.Context) {
 	go c.ReadLoop(ctx)
 
+	continueTicker := time.NewTicker(1500 * time.Microsecond)
+	defer continueTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -163,6 +167,8 @@ func (c *PixieClient) run(ctx context.Context) {
 			return
 		case pkt := <-c.PacketChannel:
 			c.HandlePacket(pkt)
+		case <-continueTicker.C:
+			c.FlushContinueBatch()
 		}
 	}
 }
@@ -178,7 +184,6 @@ func (c *PixieClient) HandlePacket(pkt Packet) {
 		if stream := c.GetStream(p.StreamID()); stream != nil {
 			if stream.FlowControl != nil {
 				stream.FlowControl.Set(p.BufferRemaining)
-				stream.FlowControl.Awaken()
 			}
 		}
 
@@ -210,7 +215,7 @@ func (c *PixieClient) OpenStream(ctx context.Context, streamType StreamType, hos
 		fc = NewFlowControl(fcMode, c.BufferSize)
 	}
 
-	stream := NewStream(streamID, streamType, c.PixieCore, fc, int(c.BufferSize))
+	stream := NewStream(streamID, streamType, c.PixieCore, fc, c.Config.StreamChannelSize)
 	stream.Host = host
 	stream.Port = port
 	c.AddStream(stream)

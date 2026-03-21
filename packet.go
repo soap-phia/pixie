@@ -238,15 +238,12 @@ func DecodeConnectPacket(streamId uint32, payload []byte) (*ConnectPacket, error
 }
 
 func DecodeDataPacket(streamId uint32, payload []byte) (*DataPacket, error) {
-	data := make([]byte, len(payload))
-	copy(data, payload)
-
 	return &DataPacket{
 		PacketHeader: PacketHeader{
 			PacketType: pData,
 			StreamId:   streamId,
 		},
-		Payload: data,
+		Payload: payload,
 	}, nil
 }
 

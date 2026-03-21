@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"net"
 	"sync"
 	"time"
 )
@@ -12,6 +13,7 @@ type GorillaWebSocket interface {
 	Close() error
 	SetReadDeadline(t time.Time) error
 	SetWriteDeadline(t time.Time) error
+	UnderlyingConn() net.Conn
 }
 
 type Gorilla struct {
@@ -56,4 +58,8 @@ func (t *Gorilla) WriteMessage(ctx context.Context, data []byte) error {
 
 func (t *Gorilla) Close() error {
 	return t.Conn.Close()
+}
+
+func (t *Gorilla) NetConn() net.Conn {
+	return t.Conn.UnderlyingConn()
 }

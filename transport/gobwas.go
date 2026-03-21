@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"sync"
 	"time"
 )
@@ -16,10 +17,16 @@ type GobwasConn interface {
 	SetWriteDeadline(t time.Time) error
 }
 
+type GobwasNetConn interface {
+	GobwasConn
+	NetConn() net.Conn
+}
+
 type Gobwas struct {
 	Conn       GobwasConn
 	ReadMutex  sync.Mutex
 	WriteMutex sync.Mutex
+	HeaderBuf  [4]byte
 }
 
 func NewGobwas(conn GobwasConn) Transport {
@@ -36,12 +43,11 @@ func (t *Gobwas) ReadMessage(ctx context.Context) ([]byte, error) {
 		}
 	}
 
-	header := make([]byte, 4)
-	if _, err := io.ReadFull(t.Conn, header); err != nil {
+	if _, err := io.ReadFull(t.Conn, t.HeaderBuf[:]); err != nil {
 		return nil, err
 	}
 
-	length := int(header[0])<<24 | int(header[1])<<16 | int(header[2])<<8 | int(header[3])
+	length := int(t.HeaderBuf[0])<<24 | int(t.HeaderBuf[1])<<16 | int(t.HeaderBuf[2])<<8 | int(t.HeaderBuf[3])
 	if length > 16*1024*1024 {
 		return nil, ePacketTooLarge
 	}
@@ -65,14 +71,20 @@ func (t *Gobwas) WriteMessage(ctx context.Context, data []byte) error {
 	}
 
 	length := len(data)
-	header := []byte{
+	header := [4]byte{
 		byte(length >> 24),
 		byte(length >> 16),
 		byte(length >> 8),
 		byte(length),
 	}
 
-	if _, err := t.Conn.Write(header); err != nil {
+	if nc, ok := t.Conn.(GobwasNetConn); ok {
+		bufs := net.Buffers{header[:], data}
+		_, err := bufs.WriteTo(nc.NetConn())
+		return err
+	}
+
+	if _, err := t.Conn.Write(header[:]); err != nil {
 		return err
 	}
 	_, err := t.Conn.Write(data)
@@ -81,4 +93,11 @@ func (t *Gobwas) WriteMessage(ctx context.Context, data []byte) error {
 
 func (t *Gobwas) Close() error {
 	return t.Conn.Close()
+}
+
+func (t *Gobwas) NetConn() net.Conn {
+	if nc, ok := t.Conn.(GobwasNetConn); ok {
+		return nc.NetConn()
+	}
+	return nil
 }

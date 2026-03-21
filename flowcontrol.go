@@ -2,17 +2,17 @@ package pixie
 
 import (
 	"context"
-	"sync"
+	"runtime"
+	"sync/atomic"
 )
 
 type FlowControlMode uint8
 
 type FlowControl struct {
 	Mode         FlowControlMode
-	Buffer       uint32
+	Buffer       atomic.Uint32
 	TargetBuffer uint32
 	Wakeup       chan struct{}
-	Mutex        sync.Mutex
 }
 
 const (
@@ -22,45 +22,48 @@ const (
 )
 
 func NewFlowControl(mode FlowControlMode, bufferSize uint32) *FlowControl {
-	return &FlowControl{
+	fc := &FlowControl{
 		Mode:         mode,
-		Buffer:       bufferSize,
 		TargetBuffer: (bufferSize * 9) / 10,
 		Wakeup:       make(chan struct{}, 1),
 	}
+	fc.Buffer.Store(bufferSize)
+	return fc
 }
 
 func (fc *FlowControl) CanSend() bool {
 	if fc.Mode != fcTrackAmt {
 		return true
 	}
-	fc.Mutex.Lock()
-	defer fc.Mutex.Unlock()
-	return fc.Buffer > 0
+	return fc.Buffer.Load() > 0
 }
 
 func (fc *FlowControl) Subtract() {
 	if fc.Mode == fcDisabled {
 		return
 	}
-	fc.Mutex.Lock()
-	defer fc.Mutex.Unlock()
-	if fc.Buffer > 0 {
-		fc.Buffer--
+
+	for {
+		old := fc.Buffer.Load()
+		if old == 0 {
+			return
+		}
+
+		new := old - 1
+		if fc.Buffer.CompareAndSwap(old, new) {
+			return
+		}
+
+		runtime.Gosched()
 	}
 }
 
 func (fc *FlowControl) Add(amount uint32) uint32 {
-	fc.Mutex.Lock()
-	defer fc.Mutex.Unlock()
-	fc.Buffer += amount
-	return fc.Buffer
+	return fc.Buffer.Add(amount)
 }
 
 func (fc *FlowControl) Set(amount uint32) {
-	fc.Mutex.Lock()
-	defer fc.Mutex.Unlock()
-	fc.Buffer = amount
+	fc.Buffer.Store(amount)
 	select {
 	case fc.Wakeup <- struct{}{}:
 	default:
@@ -68,9 +71,7 @@ func (fc *FlowControl) Set(amount uint32) {
 }
 
 func (fc *FlowControl) Get() uint32 {
-	fc.Mutex.Lock()
-	defer fc.Mutex.Unlock()
-	return fc.Buffer
+	return fc.Buffer.Load()
 }
 
 func (fc *FlowControl) ShouldContinue(readCount uint32) bool {
