@@ -21,6 +21,7 @@ const (
 const (
 	StrTCP StreamType = 0x01
 	StrUDP StreamType = 0x02
+	StrPTY StreamType = 0x03
 )
 
 const (
@@ -54,6 +55,8 @@ func (s StreamType) String() string {
 		return "tcp"
 	case StrUDP:
 		return "udp"
+	case StrPTY:
+		return "pty"
 	default:
 		return fmt.Sprintf("unknown(0x%02x)", uint8(s))
 	}

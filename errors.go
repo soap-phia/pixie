@@ -20,6 +20,10 @@ var (
 	eClosedSocket     = errors.New("pixie: websocket closed")
 	eFailedHandshake  = errors.New("pixie: Handshake failed")
 	eAuthFail         = errors.New("pixie: authentication failed")
+
+	ErrPacketTooSmall = ePacketTooSmall
+	ErrInvalidPacket  = eInvalidPacket
+	ErrPixieClosed    = ePixieClosed
 )
 
 func (e *StreamError) Error() string {

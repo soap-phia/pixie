@@ -320,6 +320,11 @@ func (m *PixieCore) ReadLoop(ctx context.Context) {
 			}
 		}
 
+		if len(data) >= 5 && data[0] >= 0xF0 {
+			m.HandleExtensionPacket(ctx, PacketType(data[0]), data)
+			continue
+		}
+
 		pkt, err := Decode(data)
 		if err != nil {
 			continue
@@ -416,4 +421,19 @@ func (m *PixieCore) GetExtension(id uint8) Extension {
 		}
 	}
 	return nil
+}
+
+func (m *PixieCore) HandleExtensionPacket(ctx context.Context, packetType PacketType, data []byte) {
+	m.ExtensionMutex.RLock()
+	extensions := m.Extensions
+	m.ExtensionMutex.RUnlock()
+
+	for _, ext := range extensions {
+		for _, pt := range ext.SupportedPacketTypes() {
+			if pt == packetType {
+				_ = ext.PacketHandler(ctx, packetType, data, m.Transport.Transport)
+				return
+			}
+		}
+	}
 }
