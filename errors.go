@@ -20,6 +20,7 @@ var (
 	eClosedSocket     = errors.New("pixie: websocket closed")
 	eFailedHandshake  = errors.New("pixie: Handshake failed")
 	eAuthFail         = errors.New("pixie: authentication failed")
+	eCertAuthFail     = errors.New("pixie: certificate authentication failed")
 
 	ErrPacketTooSmall = ePacketTooSmall
 	ErrInvalidPacket  = eInvalidPacket

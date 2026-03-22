@@ -2,6 +2,9 @@ package pixie
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
 	"fmt"
 	"sync"
 )
@@ -54,10 +57,34 @@ type MOTDExtensionBuilder struct {
 	Message string
 }
 
+type CertAuthExtension struct {
+	Required            bool
+	SupportedAlgorithms uint8
+	Challenge           []byte
+	SelectedAlgorithm uint8
+	PublicKeyHash     [32]byte
+	Signature         []byte
+	PrivateKey ed25519.PrivateKey
+	Validator func(publicKeyHash [32]byte) ed25519.PublicKey
+}
+
+type CertAuthExtensionBuilder struct {
+	Required            bool
+	SupportedAlgorithms uint8
+	ChallengeSize       int
+	PrivateKey          ed25519.PrivateKey
+	Validator           func(publicKeyHash [32]byte) ed25519.PublicKey
+}
+
 const (
 	UDPExtensionID      uint8 = 0x01
 	PasswordExtensionID uint8 = 0x02
+	CertAuthExtensionID uint8 = 0x03
 	MOTDExtensionID     uint8 = 0x04
+)
+
+const (
+	SigAlgoEd25519 uint8 = 0b00000001
 )
 
 var DefaultRegistry = NewExtensionRegistry()
@@ -92,6 +119,7 @@ func (r *ExtensionRegistry) BuildExtension(id uint8, data []byte, role Role) (Ex
 func init() {
 	DefaultRegistry.AddExtension(&UDPExtensionBuilder{})
 	DefaultRegistry.AddExtension(&PasswordExtensionBuilder{})
+	DefaultRegistry.AddExtension(&CertAuthExtensionBuilder{})
 	DefaultRegistry.AddExtension(&MOTDExtensionBuilder{})
 }
 
@@ -235,4 +263,150 @@ func (b *MOTDExtensionBuilder) Build(data []byte, role Role) (Extension, error) 
 
 func (b *MOTDExtensionBuilder) BuildDefault(role Role) Extension {
 	return &MOTDExtension{Message: b.Message}
+}
+
+func (e *CertAuthExtension) ID() uint8 { return CertAuthExtensionID }
+
+func (e *CertAuthExtension) Encode(role Role) []byte {
+	if role == RoleServer {
+		buf := make([]byte, 2+len(e.Challenge))
+		if e.Required {
+			buf[0] = 1
+		} else {
+			buf[0] = 0
+		}
+		buf[1] = e.SupportedAlgorithms
+		copy(buf[2:], e.Challenge)
+		return buf
+	}
+
+	buf := make([]byte, 1+32+len(e.Signature))
+	buf[0] = e.SelectedAlgorithm
+	copy(buf[1:33], e.PublicKeyHash[:])
+	copy(buf[33:], e.Signature)
+	return buf
+}
+
+func (e *CertAuthExtension) Decode(data []byte, role Role) error {
+	if role == RoleClient {
+		if len(data) < 2 {
+			return ePacketTooSmall
+		}
+		e.Required = data[0] != 0
+		e.SupportedAlgorithms = data[1]
+		e.Challenge = make([]byte, len(data)-2)
+		copy(e.Challenge, data[2:])
+	} else {
+		if len(data) < 33 {
+			return ePacketTooSmall
+		}
+		e.SelectedAlgorithm = data[0]
+		copy(e.PublicKeyHash[:], data[1:33])
+		e.Signature = make([]byte, len(data)-33)
+		copy(e.Signature, data[33:])
+	}
+	return nil
+}
+
+func (e *CertAuthExtension) HandleHandshake(ctx context.Context, transport Transport, role Role) error {
+	if role == RoleServer && e.Validator != nil {
+		publicKey := e.Validator(e.PublicKeyHash)
+		if publicKey == nil {
+			return eCertAuthFail
+		}
+
+		if e.SelectedAlgorithm&SigAlgoEd25519 != 0 {
+			if !ed25519.Verify(publicKey, e.Challenge, e.Signature) {
+				return eCertAuthFail
+			}
+		} else {
+			return eCertAuthFail
+		}
+	}
+	return nil
+}
+
+func (e *CertAuthExtension) SupportedPacketTypes() []PacketType  { return nil }
+func (e *CertAuthExtension) CongestionStreamTypes() []StreamType { return nil }
+
+func (e *CertAuthExtension) PacketHandler(ctx context.Context, packetType PacketType, data []byte, transport Transport) error {
+	return nil
+}
+
+func (e *CertAuthExtension) Clone() Extension {
+	clone := &CertAuthExtension{
+		Required:            e.Required,
+		SupportedAlgorithms: e.SupportedAlgorithms,
+		SelectedAlgorithm:   e.SelectedAlgorithm,
+		PublicKeyHash:       e.PublicKeyHash,
+		Validator:           e.Validator,
+	}
+	if e.Challenge != nil {
+		clone.Challenge = make([]byte, len(e.Challenge))
+		copy(clone.Challenge, e.Challenge)
+	}
+	if e.Signature != nil {
+		clone.Signature = make([]byte, len(e.Signature))
+		copy(clone.Signature, e.Signature)
+	}
+	if e.PrivateKey != nil {
+		clone.PrivateKey = make(ed25519.PrivateKey, len(e.PrivateKey))
+		copy(clone.PrivateKey, e.PrivateKey)
+	}
+	return clone
+}
+
+func (e *CertAuthExtension) SignChallenge() error {
+	if e.PrivateKey == nil {
+		return fmt.Errorf("no private key configured")
+	}
+	if len(e.Challenge) == 0 {
+		return fmt.Errorf("no challenge to sign")
+	}
+
+	publicKey := e.PrivateKey.Public().(ed25519.PublicKey)
+	e.PublicKeyHash = sha256.Sum256(publicKey)
+	e.SelectedAlgorithm = SigAlgoEd25519
+	e.Signature = ed25519.Sign(e.PrivateKey, e.Challenge)
+
+	return nil
+}
+
+func (b *CertAuthExtensionBuilder) ID() uint8 { return CertAuthExtensionID }
+
+func (b *CertAuthExtensionBuilder) Build(data []byte, role Role) (Extension, error) {
+	ext := &CertAuthExtension{
+		Required:            b.Required,
+		SupportedAlgorithms: b.SupportedAlgorithms,
+		PrivateKey:          b.PrivateKey,
+		Validator:           b.Validator,
+	}
+	if err := ext.Decode(data, role); err != nil {
+		return nil, err
+	}
+	return ext, nil
+}
+
+func (b *CertAuthExtensionBuilder) BuildDefault(role Role) Extension {
+	ext := &CertAuthExtension{
+		Required:            b.Required,
+		SupportedAlgorithms: b.SupportedAlgorithms,
+		PrivateKey:          b.PrivateKey,
+		Validator:           b.Validator,
+	}
+
+	if role == RoleServer {
+		challengeSize := b.ChallengeSize
+		if challengeSize <= 0 {
+			challengeSize = 64
+		}
+		ext.Challenge = make([]byte, challengeSize)
+		rand.Read(ext.Challenge)
+
+		if ext.SupportedAlgorithms == 0 {
+			ext.SupportedAlgorithms = SigAlgoEd25519
+		}
+	}
+
+	return ext
 }
